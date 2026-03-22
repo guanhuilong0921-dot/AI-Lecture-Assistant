@@ -1,0 +1,3 @@
+texlive-xetex
+texlive-lang-chinese
+texlive-fonts-recommended
