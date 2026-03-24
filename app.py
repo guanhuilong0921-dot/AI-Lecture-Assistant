@@ -1,158 +1,238 @@
 import streamlit as st
 import os
-# 关键：从你的 main.py 中导入刚刚写好的核心函数
-from main import process_image_to_dict
-
 import subprocess
-import base64
+from main import process_image_to_dict
 
 def compile_latex_to_pdf(latex_code, filename="generated_notes"):
     """将 LaTeX 源码编译为 PDF"""
     tex_file = f"{filename}.tex"
     pdf_file = f"{filename}.pdf"
     
-    # 1. 将代码写入 .tex 文件
     with open(tex_file, "w", encoding="utf-8") as f:
         f.write(latex_code)
         
-    # 2. 调用本地 xelatex 进行编译 (隐藏终端输出)
     try:
-        # 运行两遍 xelatex 以确保目录和引用正确生成
         subprocess.run(["xelatex", "-interaction=nonstopmode", tex_file], 
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
         if os.path.exists(pdf_file):
             return pdf_file
         else:
             return "ERROR_COMPILE"
     except FileNotFoundError:
-        # 如果系统里找不到 xelatex 命令，就会触发这个错误
         return "ERROR_NO_COMPILER"
 
 st.set_page_config(layout="wide", page_title="AI 智能笔记助教")
 
-st.title("📚 智能交互式学习平台 (MVP 版)")
-st.markdown("上传手写笔记，一键生成 **LaTeX 源码、核心解析、思维导图与同类练习题**！")
+st.title("📚 智能交互式学习平台 (防重复解析版)")
+st.markdown("批量上传、动态追加、图文对照、自由排序，一键生成 **完整课程讲义 PDF**！")
 
+# ================= 状态初始化 =================
+if "multi_results" not in st.session_state:
+    st.session_state.multi_results = []
+# 👑 新增：专门记录已经解析过的文件的“身份证号” (文件名 + 文件大小)
+if "processed_sigs" not in st.session_state:
+    st.session_state.processed_sigs = set()
+
+# ================= 侧边栏：上传与全局控制 =================
 with st.sidebar:
     st.header("📥 步骤一：上传笔记")
-    uploaded_file = st.file_uploader("请选择一张高数笔记图片", type=["jpg", "png", "jpeg"])
+    uploaded_files = st.file_uploader("请选择课堂笔记图片（可随时追加）", type=["jpg", "png", "jpeg"], accept_multiple_files=True)
+    
+    # 👑 核心逻辑 1：计算哪些是“新文件”
+    new_files = []
+    if uploaded_files:
+        for f in uploaded_files:
+            # 给每个文件生成一个独一无二的身份证号
+            file_sig = f"{f.name}_{f.size}"
+            if file_sig not in st.session_state.processed_sigs:
+                new_files.append(f)
+                
+    # 👑 核心逻辑 2：动态变换按钮状态！
+    if not uploaded_files:
+        analyze_btn = st.button("🚀 请先上传图片", disabled=True, use_container_width=True)
+    elif len(new_files) == 0:
+        analyze_btn = st.button("✅ 当前图片已全部解析", disabled=True, use_container_width=True)
+    else:
+        analyze_btn = st.button(f"🚀 开始解析 {len(new_files)} 张新图片", type="primary", use_container_width=True)
     
     st.markdown("---")
-    analyze_btn = st.button("🚀 开始 AI 分析", type="primary", use_container_width=True)
+    st.header("⚙️ 全局设置")
+    if st.button("🗑️ 清空工作台 (删除所有内容)", use_container_width=True):
+        st.session_state.multi_results = [] 
+        st.session_state.processed_sigs = set() # 清空黑名单
+        st.rerun() 
 
-col1, col2 = st.columns([1, 1.2])
+# ================= 动态维护页码 =================
+for i, res in enumerate(st.session_state.multi_results):
+    res["page_num"] = i + 1
+
+# ================= 主界面排版 =================
+col1, col2 = st.columns([1.1, 1.4]) 
 
 with col1:
-    st.subheader("🖼️ 原始笔记")
-    if uploaded_file is not None:
-        st.image(uploaded_file, caption="待分析笔记", use_container_width=True)
+    st.subheader("🖼️ 原始笔记序列 (按输出顺序)")
+    if st.session_state.multi_results:
+        st.write(f"**当前工作台共有 {len(st.session_state.multi_results)} 页笔记，图文一一对应：**")
+        for res in st.session_state.multi_results:
+            st.divider() 
+            st.markdown(f"#### 📄 第 {res['page_num']} 页: `{res['filename']}`")
+            if "image_bytes" in res:
+                st.image(res["image_bytes"], use_container_width=True)
+            else:
+                 st.warning("图片内容未成功持久化，建议清空工作台重新解析。")
     else:
-        st.info("👈 请先在左侧侧边栏上传图片。")
+         if not uploaded_files:
+            st.info("👈 请先在左侧侧边栏上传手写笔记图片。")
 
 with col2:
-    st.subheader("✨ AI 整理与解析面板")
+    st.subheader("✨ AI 整理与解析控制台")
     
-    # 初始化记忆盒子
-    if "result_data" not in st.session_state:
-        st.session_state.result_data = None
-
-    # 第一步：点击分析按钮，调用大模型并存入记忆盒子
+    # ---------------- 核心逻辑：只解析新文件 ----------------
     if analyze_btn:
-        if uploaded_file is None:
-            st.warning("组长提醒：请先上传图片再点击分析哦！")
-        else:
-            with st.spinner("AI 正在深度解析数学逻辑，请稍候..."):
-                # 保存临时图片
-                temp_img_path = "temp_upload.jpg"
-                with open(temp_img_path, "wb") as f:
-                    f.write(uploaded_file.getvalue())
+        start_idx = len(st.session_state.multi_results)
+        # 👑 注意：这里循环的是 new_files，而不是 uploaded_files！
+        for i, file in enumerate(new_files):
+            with st.spinner(f"正在深度解析新增的 第 {start_idx + i + 1} 页 ({file.name})..."):
+                file_bytes = file.getvalue()
+                file_sig = f"{file.name}_{file.size}" # 获取身份证号
                 
-                # 调用核心引擎，把结果放进 session_state 这个记忆盒子里！
-                st.session_state.result_data = process_image_to_dict(temp_img_path)
+                temp_img_path = f"temp_{file.name}"
+                with open(temp_img_path, "wb") as f:
+                    f.write(file_bytes)
+                
+                result_data = process_image_to_dict(temp_img_path)
+                
+                if result_data:
+                    st.session_state.multi_results.append({
+                        "page_num": start_idx + i + 1,
+                        "filename": file.name,
+                        "data": result_data,
+                        "image_bytes": file_bytes,
+                        "sig": file_sig # 把身份证号也存进去，方便删除时找回
+                    })
+                    # 解析成功，加入黑名单！
+                    st.session_state.processed_sigs.add(file_sig)
                 
                 if os.path.exists(temp_img_path):
                     os.remove(temp_img_path)
+        
+        st.success("✅ 追加解析与持久化完成！")
+        st.rerun()
 
-    # 第二步：只要记忆盒子里有数据，就一直展示它们
-    if st.session_state.result_data is not None:
-        data = st.session_state.result_data # 拿出来方便用
-        
-        st.success("✅ 解析完成！")
-        
-        # 折叠面板设计
-        with st.expander("💡 核心知识点与易错解析", expanded=True):
-            st.markdown(data["analysis"])
-            
-        with st.expander("🎯 举一反三：同类变式题", expanded=True):
-            st.info(data["exercise"])
-
-        with st.expander("🧠 解题逻辑流向 (Mermaid代码)", expanded=False):
-            st.code(data["mindmap"], language="mermaid")
-            
-        with st.expander("📝 标准化 LaTeX 源码 (纯数学推导)", expanded=False):
-            st.code(data["latex"], language="latex")
-        
-        st.markdown("---")
-        st.markdown("### 🖨️ 专属学习资料定制与导出")
-        
-        # 1. 渲染三个并排的勾选框
-        st.write("请选择需要包含在最终 PDF 中的模块：")
-        col_chk1, col_chk2, col_chk3 = st.columns(3)
-        with col_chk1:
-            inc_note = st.checkbox("📝 原始推导笔记", value=True)
-        with col_chk2:
-            inc_analysis = st.checkbox("💡 考点与错因解析", value=True)
-        with col_chk3:
-            inc_exercise = st.checkbox("🎯 变式练习题", value=True)
-            
-        # 2. 纯文本源码下载 (无论如何都提供一个后路)
-        st.download_button(
-            label="📥 仅下载原始 LaTeX 源码段 (.tex)",
-            data=data["latex"],
-            file_name="raw_notes.tex",
-            mime="text/plain"
-        )
-        
-        # 3. 动态组装并编译 PDF 按钮逻辑
-        if st.button("✨ 组装并编译为高清中文 PDF", type="primary"):
-            with st.spinner("正在为您定制专属 PDF，这可能需要几秒钟..."):
+    # ---------------- 核心逻辑：页面管理与展示 ----------------
+    if st.session_state.multi_results:
+        with st.expander("🎛️ 页面排序与删除 (点击展开)", expanded=False):
+            st.write("调整这里的顺序，PDF 的顺序也会随之改变：")
+            for i, res in enumerate(st.session_state.multi_results):
+                c_name, c_up, c_down, c_del = st.columns([4, 1, 1, 1])
+                c_name.markdown(f"**第 {res['page_num']} 页**: `{res['filename']}`")
                 
-                # 【防乱码神器】：在 Python 里写死最完美的中文 LaTeX 框架
+                if c_up.button("🔼 上移", key=f"up_{i}", disabled=(i == 0)):
+                    st.session_state.multi_results[i-1], st.session_state.multi_results[i] = st.session_state.multi_results[i], st.session_state.multi_results[i-1]
+                    st.rerun() 
+                    
+                if c_down.button("🔽 下移", key=f"down_{i}", disabled=(i == len(st.session_state.multi_results)-1)):
+                    st.session_state.multi_results[i+1], st.session_state.multi_results[i] = st.session_state.multi_results[i], st.session_state.multi_results[i+1]
+                    st.rerun()
+                    
+                if c_del.button("❌ 删除", key=f"del_{i}"):
+                    # 👑 如果用户删除了某一页，我们要把它从黑名单里放出来！
+                    deleted_item = st.session_state.multi_results.pop(i)
+                    if deleted_item["sig"] in st.session_state.processed_sigs:
+                        st.session_state.processed_sigs.remove(deleted_item["sig"])
+                    st.rerun()
+
+        st.markdown("---")
+        
+        tab_names = [f"第 {res['page_num']} 页" for res in st.session_state.multi_results]
+        tabs = st.tabs(tab_names)
+        
+        for i, tab in enumerate(tabs):
+            with tab:
+                res = st.session_state.multi_results[i]
+                data = res["data"]
+                
+                st.caption(f"文件名: {res['filename']}")
+                with st.expander("🔍 识别原文与 AI 智能纠错", expanded=True):
+                    st.markdown(data.get("recognition", "未提取到原文信息"))
+                with st.expander("💡 核心知识点与易错解析", expanded=True):
+                    st.markdown(data.get("analysis", "解析提取失败"))
+                with st.expander("🎯 举一反三：同类变式题", expanded=True):
+                    st.info(data.get("exercise", "变式题提取失败"))
+                with st.expander("🧠 解题逻辑流向 (Mermaid代码)", expanded=False):
+                    st.code(data.get("mindmap", ""), language="mermaid")
+                with st.expander("📝 标准化 LaTeX 源码", expanded=False):
+                    st.code(data.get("latex", ""), language="latex")
+        
+        # ---------------- 核心逻辑：PDF 按需定制 ----------------
+        st.markdown("---")
+        st.markdown("### 🖨️ 课程专属资料按需定制")
+        st.write("请为**每一页**独立勾选需要包含在最终 PDF 中的模块：")
+        
+        export_selections = {}
+        for i, res in enumerate(st.session_state.multi_results):
+            page_num = res["page_num"]
+            st.markdown(f"**📄 第 {page_num} 页 : {res['filename']}**")
+            
+            c1, c2, c3, c4 = st.columns(4)
+            with c1: inc_rec = st.checkbox("🔍 原文与纠错", value=True, key=f"rec_{i}")
+            with c2: inc_note = st.checkbox("📝 标准化笔记", value=True, key=f"note_{i}")
+            with c3: inc_ana = st.checkbox("💡 考点解析", value=True, key=f"ana_{i}")
+            with c4: inc_exe = st.checkbox("🎯 变式题", value=False, key=f"exe_{i}")
+            
+            export_selections[page_num] = {
+                "res_data": res, "inc_rec": inc_rec, "inc_note": inc_note, "inc_ana": inc_ana, "inc_exe": inc_exe
+            }
+            st.divider()
+            
+        if st.button("✨ 组装并编译为全课 PDF 讲义", type="primary"):
+            with st.spinner("正在为您定制全课专属 PDF 讲义，请稍候..."):
                 final_latex_code = r"""
 \documentclass[UTF8, a4paper, 12pt]{ctexart}
 \usepackage{amsmath, amssymb, amsthm}
 \usepackage{geometry}
 \geometry{left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm}
+\title{新生引导课：课堂智能讲义}
+\author{AI-Lecture-Assistant 自动纠错与重构}
+\date{}
 \begin{document}
+\maketitle
+\tableofcontents
+\newpage
 """
-                # 根据用户的勾选，动态往框架里塞内容
-                if inc_note:
-                    final_latex_code += r"\section*{一、 标准化笔记}" + "\n" + data["latex"] + "\n\n"
-                if inc_analysis:
-                    final_latex_code += r"\section*{二、 核心考点与易错解析}" + "\n" + data["analysis"] + "\n\n"
-                if inc_exercise:
-                    final_latex_code += r"\section*{三、 举一反三：变式练习题}" + "\n" + data["exercise"] + "\n\n"
-                
-                # 封口
+                pages_added = 0
+                for page_num, config in export_selections.items():
+                    if not any([config["inc_rec"], config["inc_note"], config["inc_ana"], config["inc_exe"]]):
+                        continue
+                        
+                    pages_added += 1
+                    final_latex_code += f"\\section{{课堂笔记 - 第 {page_num} 页}}\n"
+                    data = config["res_data"]["data"]
+                    
+                    if config["inc_rec"]:
+                        final_latex_code += r"\subsection*{零、 原文识别与智能纠错}" + "\n" + data.get("recognition", "") + "\n\n"
+                    if config["inc_note"]:
+                        final_latex_code += r"\subsection*{一、 标准化笔记}" + "\n" + data.get("latex", "") + "\n\n"
+                    if config["inc_ana"]:
+                        final_latex_code += r"\subsection*{二、 核心考点与易错解析}" + "\n" + data.get("analysis", "") + "\n\n"
+                    if config["inc_exe"]:
+                        final_latex_code += r"\subsection*{三、 举一反三：变式练习题}" + "\n" + data.get("exercise", "") + "\n\n"
+                        
+                    final_latex_code += r"\newpage" + "\n"
+                    
                 final_latex_code += r"\end{document}"
                 
-                # 将组装好的终极代码送去编译
-                pdf_result = compile_latex_to_pdf(final_latex_code)
-                
-                if pdf_result == "ERROR_NO_COMPILER":
-                    st.error("⚠️ 编译失败：找不到 `xelatex` 命令。请确保已经安装 TeX Live 并配置环境变量！")
-                elif pdf_result == "ERROR_COMPILE":
-                    st.error("⚠️ 编译失败：模型生成的文本中可能包含了 LaTeX 无法识别的非法字符。")
-                    # 如果失败，把拼接好的源码显示出来方便 Debug
-                    with st.expander("查看出问题的完整 LaTeX 源码"):
-                        st.code(final_latex_code, language="latex")
+                if pages_added == 0:
+                    st.error("您没有勾选任何内容！")
                 else:
-                    st.success("🎉 专属定制 PDF 编译成功！")
-                    with open(pdf_result, "rb") as f:
-                        st.download_button(
-                            label="📥 点击下载您的定制 PDF",
-                            data=f,
-                            file_name="custom_math_notes.pdf",
-                            mime="application/pdf"
-                        )
+                    pdf_result = compile_latex_to_pdf(final_latex_code, filename="full_course_notes")
+                    if pdf_result == "ERROR_NO_COMPILER":
+                        st.error("⚠️ 编译失败：找不到 `xelatex` 命令。")
+                    elif pdf_result == "ERROR_COMPILE":
+                        st.error("⚠️ 编译失败：公式可能存在语法冲突。")
+                        with st.expander("查看出问题的完整 LaTeX 源码"):
+                            st.code(final_latex_code, language="latex")
+                    else:
+                        st.success("🎉 定制讲义 PDF 编译成功！")
+                        with open(pdf_result, "rb") as f:
+                            st.download_button("📥 点击下载全课讲义", data=f, file_name="AI_Lecture_Notes.pdf", mime="application/pdf")
