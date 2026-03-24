@@ -10,15 +10,21 @@ dashscope.api_key = os.getenv("QWEN_API_KEY")
 # ==========================================
 
 def parse_qwen_response(raw_text):
-    """把大模型返回的长文本切分成字典"""
+    # 字典里增加 recognition 字段
     parsed_data = {
-        "latex": "",
-        "analysis": "解析生成失败，请重试。",
-        "mindmap": "",
-        "exercise": "练习题生成失败，请重试。"
+        "recognition": "原文识别与纠错生成失败。",
+        "latex": "% LaTeX 生成失败",
+        "analysis": "解析生成失败，请检查网络或重试。",
+        "mindmap": "graph TD;\n A[生成失败] --> B[请重试]",
+        "exercise": "练习题生成失败。"
     }
- 
+    
     try:
+        # 新增提取逻辑
+        if "[START_RECOGNITION]" in raw_text and "[END_RECOGNITION]" in raw_text:
+            rec_part = raw_text.split("[START_RECOGNITION]")[1].split("[END_RECOGNITION]")[0].strip()
+            parsed_data["recognition"] = rec_part
+                       
         # 提取 LaTeX
         if "[START_LATEX]" in raw_text and "[END_LATEX]" in raw_text:
             latex_part = raw_text.split("[START_LATEX]")[1].split("[END_LATEX]")[0].strip()
@@ -50,26 +56,28 @@ def process_image_to_dict(img_path):
     print(f"--- 正在通过通义千问视觉模型分析: {img_path} ---")
  
     prompt_text = r"""
-    你是一位精通 LaTeX 且极具启发性的大学助教。请仔细分析图片中的手写题目和解题步骤，并严格按照以下四大模块输出，模块之间使用特定的标记符隔开：
+    你是一位精通 LaTeX 且极具启发性的大学数学助教。请按以下五大模块输出，模块间用指定的标签隔开。
     【最高指令】：在所有模块中，只能使用纯文本和 LaTeX 数学公式（用 $ 或 $$ 包裹）。**绝对禁止**使用任何 Markdown 特殊符号（如 **加粗**, # 标题，- 列表），以防止后续编译 PDF 时报错！
+
+    [START_RECOGNITION]
+    首先完整识别并转录图片中的手写原文。然后，诊断原文中是否存在计算错误、逻辑漏洞或书写不规范。如果有，请明确指出并给出纠错建议；如果没有，请回复“原文逻辑严密，未发现明显错误”。
+    [END_RECOGNITION]
+
     [START_LATEX]
     仅仅输出图片中手写笔记的核心 LaTeX 数学代码。
-    注意：只输出公式和正文推导！绝对不要包含 \documentclass, \usepackage, 以及 \begin{document} 等结构代码！
+    注意：只输出公式和正文推导！**绝对不要**包含 \documentclass, \usepackage, 以及 \begin{document} 等结构代码！
     [END_LATEX]
 
     [START_ANALYSIS]
-    在这里输出极其详细的知识点解析。千万不要简略！请你扮演一位极其耐心、注重逻辑推导的大学数学教授，必须包含以下三个层次：
-    1. **核心考点剖析**：深入解释本题考察的理论基础。
-    2. **步步为营推演**：对照图片中的笔记，一步一步拆解黑板上的推导过程。不仅要说明“是什么”，更要解释“为什么”（例如：为什么这一步能推到下一步？这里用到了什么微积分定理或公式？）。
-    3. **易错点与避坑指南**：一针见血地指出学生在做这类高数题时，最常犯的计算陷阱或逻辑误区。
+    深入解释核心考点、推导逻辑和易错点。请分段落书写，逻辑清晰，绝不能用 Markdown 标记。
     [END_ANALYSIS]
 
     [START_MINDMAP]
-    在这里只输出 Mermaid 语法的代码，画出这道题的解题逻辑流向图，不要包含 markdown 的 ```mermaid 标记。
+    只输出 Mermaid 语法的代码，画出解题逻辑流向图，不要包含 ```mermaid 标记。
     [END_MINDMAP]
 
     [START_EXERCISE]
-    在这里出一道同类型的变式练习题，并附带简短的答案提示。
+    出一道同类型的变式练习题，并附带简短的答案提示。绝不能用 Markdown 标记。
     [END_EXERCISE]
     """
  
