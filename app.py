@@ -207,7 +207,19 @@ else:
                                     temp_paths.append(p)
                                     messages[0]["content"].append({"image": f"file://{os.path.abspath(p)}"})
                                 # 核心 Prompt：明确指示这是完整的一页笔记
-                                messages[0]["content"].append({"text": "这是一道跨越了多页的高难题目或完整笔记。请结合以上所有图片的内容，建立整体上下文逻辑，输出精准的整体 LaTeX 原文还原、详尽的分析、以及整理出一页完美的结构化笔记。一定要看全所有图，给出一个完整的 JSON 字典（必须包含 recognition, latex, analysis, exercise, mindmap 字段，且符合之前要求的 JSON 格式）。"})
+                                # 核心 Prompt：用绝对严厉的语气和模板，锁定 JSON 输出格式
+                                prompt_text = """这是一道跨越了多页的高难题目或完整笔记。请结合以上所有图片的内容，建立整体上下文逻辑，进行精准的解析。
+                                
+                                【极度重要警告】：你是一个无情的 API 接口，你必须、且只能输出一个合法的 JSON 字典对象！绝对不要包含任何开头问候语、结尾解释！绝对不要使用 Markdown 标题！
+                                请你严格按照以下 JSON 模板输出，填入对应的内容：
+                                {
+                                    "recognition": "在这里填入题目的完整文本识别内容",
+                                    "latex": "在这里填入推导过程的核心 LaTeX 公式代码",
+                                    "analysis": "在这里填入详尽的考点解析和推理步骤",
+                                    "exercise": "在这里填入一道相关的举一反三变式题",
+                                    "mindmap": "在这里提取出三个核心关键词（用逗号分隔）"
+                                }"""
+                                messages[0]["content"].append({"text": prompt_text})
 
                                 try:
                                     resp = MultiModalConversation.call(model='qwen-vl-plus', messages=messages)
