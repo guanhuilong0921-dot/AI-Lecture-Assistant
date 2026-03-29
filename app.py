@@ -215,20 +215,30 @@ else:
                                         if os.path.exists(p): os.remove(p)
                                     
                                     if resp.status_code == 200:
-                                        raw_text = resp.output.choices[0].message.content[0]['text']
-                                        # 解析 JSON (复用以前的逻辑)
-                                        import json
-                                        json_str = raw_text.replace("```json", "").replace("```", "").strip()
-                                        result_dict = json.loads(json_str)
-                                        
-                                        # 存储结果
-                                        st.session_state.wb_merged_result = {
-                                            "filename": final_filename,
-                                            "image_bytes": stitched_bytes, # 存的是拼接后的长图
-                                            "data": result_dict,
-                                            "raw_names": select_names
-                                        }
-                                        st.success("✅ 多图跨页解析成功！已整理为完整一页。下方查看结果。")
+                                     raw_text = resp.output.choices[0].message.content[0]['text']
+
+                                     # 🛡️ 架构师级鲁棒性优化：暴力提取 JSON，无视大模型的废话
+                                     import json
+                                     start_idx = raw_text.find('{')
+                                     end_idx = raw_text.rfind('}')
+
+                                     if start_idx != -1 and end_idx != -1:
+                                         json_str = raw_text[start_idx:end_idx+1]
+                                         try:
+                                             result_dict = json.loads(json_str)
+                                             # 存储结果
+                                             st.session_state.wb_merged_result = {
+                                                 "filename": final_filename,
+                                                 "image_bytes": stitched_bytes, 
+                                                 "data": result_dict,
+                                                 "raw_names": select_names
+                                             }
+                                             st.success("✅ 多图跨页解析成功！已整理为完整一页。下方查看结果。")
+                                         except json.JSONDecodeError:
+                                             # 如果截取出来还是坏的，把大模型原话抛出来让我们看看
+                                             st.error(f"❌ JSON 格式严重损坏。大模型原话：\n\n{raw_text}")
+                                     else:
+                                         st.error(f"❌ 大模型完全没有输出 JSON 格式。大模型原话：\n\n{raw_text}")
                                     else:
                                         st.error(f"API 错误: {resp.message}")
                                 except Exception as e:
