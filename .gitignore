@@ -209,8 +209,12 @@ __marimo__/
 
 
 # --- AI-Lecture-Assistant 专属忽略文件 ---
-# 忽略 Streamlit 产生的临时图片
-temp_upload.jpg
+# 忽略旧的本地 SQLite 数据库（防止历史包袱上云）
+*.db
+
+# 忽略所有在解析和多模态交互时产生的临时图片
+temp_*.jpg
+temp_tutor.jpg
 
 # 忽略 LaTeX 编译产生的中间废料和生成的 PDF
 *.tex
