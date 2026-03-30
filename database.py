@@ -83,29 +83,27 @@ def get_categories(username):
     conn.close()
     return [{"id": r[0], "main_cat": r[1], "sub_cat": r[2]} for r in rows]
 
-def save_note_to_db(username, category_id, filename, image_bytes, data_dict, record_type="error", custom_tags="", user_annotation=""):
+def save_note_to_db(username, category_id, filename, image_bytes, data, record_type, custom_tags, user_annotation, anno_img_bytes=None): # 👈 新增参数，默认为 None
     conn = get_connection()
-    cursor = conn.cursor()
-    now = datetime.datetime.now()
-    
-    cursor.execute("SELECT MAX(sort_order) FROM saved_notes WHERE category_id=%s AND username=%s", (category_id, username))
-    max_order = cursor.fetchone()[0]
-    next_order = (max_order or 0) + 1
-    
-    cursor.execute('''
-        INSERT INTO saved_notes 
-        (username, category_id, filename, image_bytes, record_type, user_annotation, tags, custom_tags, sort_order, recognition, latex, analysis, exercise, mindmap, created_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-    ''', (
-        username, category_id, filename, psycopg2.Binary(image_bytes), record_type, 
-        user_annotation, 
-        data_dict.get("tags", ""), custom_tags, next_order,
-        data_dict.get("recognition", ""), data_dict.get("latex", ""),
-        data_dict.get("analysis", ""), data_dict.get("exercise", ""),
-        data_dict.get("mindmap", ""), now
-    ))
-    conn.commit()
-    conn.close()
+    if conn:
+        try:
+            with conn.cursor() as cur:
+                # 👈 SQL 语句也要加上 annotation_image_bytes
+                cur.execute("""
+                    INSERT INTO saved_notes 
+                    (user_id, category_id, filename, image_bytes, recognition, latex, analysis, exercise, tags, record_type, custom_tags, user_annotation, annotation_image_bytes) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (username, category_id, filename, image_bytes, 
+                      data.get('recognition',''), data.get('latex',''), 
+                      data.get('analysis',''), data.get('exercise',''), 
+                      data.get('mindmap',''), record_type, custom_tags, user_annotation, anno_img_bytes)) # 👈 把图片字节流传进去
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Database error: {e}")
+            return False
+        finally:
+            conn.close()
 
 def get_saved_notes(username, category_id=None):
     conn = get_connection()
