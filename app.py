@@ -456,18 +456,40 @@ else:
 
                         st.markdown("---")
                         st.markdown("##### ✍️ 我的专属思考与注记")
-                        st.markdown("##### ✍️ 我的专属思考与注记")
-
-                        # 🖼️ 新增：如果数据库里有图片注记，就展示出来！
+                        
+                        # ================= 1. 优雅阅读区 (平时看着爽) =================
+                        if note.get('user_annotation'):
+                            st.info("💡 当前文字注记：")
+                            # 直接用 markdown 渲染，这样复制进来的公式就能完美显示！
+                            st.markdown(note['user_annotation']) 
+                            
+                        # 如果数据库里有手写图片注记，就在这里展示出来
                         if note.get('annotation_image_bytes'):
-                            st.image(note['annotation_image_bytes'], caption="📸 我的手写/补充注记", use_container_width=True)
-
-                        with st.form(key=f"anno_form_{note['id']}"):
-                            c_s1, c_s2 = st.columns(2)
-                            is_starred_ui_db = c_s1.checkbox("⭐ 设为核心重难点", value=bool(note['is_starred']))
-                            is_confused_ui_db = c_s2.checkbox("❓ 尚未完全掌握", value=bool(note['is_confused']))
-                            custom_tags_ui_db = st.text_input("🏷️ 更新自定义标签", value=note['custom_tags'], key=f"ct_db_{note['id']}")
-                            anno_ui_db = st.text_area("在此写下你的注记：", value=note['user_annotation'], key=f"anno_db_{note['id']}", height=100)
-                            if st.form_submit_button("💾 更新卡片状态"):
-                                db.update_note_metadata(note['id'], username, anno_ui_db, 1 if is_starred_ui_db else 0, 1 if is_confused_ui_db else 0, custom_tags_ui_db)
-                                clear_db_cache(); st.success("状态已保存！"); st.rerun()
+                            st.image(note['annotation_image_bytes'], caption="📸 我的手写补充注记", use_container_width=True)
+                            
+                        # ================= 2. 沉浸式编辑区 (点开折叠面板修改) =================
+                        with st.expander("✏️ 展开编辑注记 / 补充手写图片 / 更改状态", expanded=False):
+                            with st.form(key=f"anno_form_{note['id']}"):
+                                c_s1, c_s2 = st.columns(2)
+                                is_starred_ui_db = c_s1.checkbox("⭐ 设为核心重难点", value=bool(note['is_starred']))
+                                is_confused_ui_db = c_s2.checkbox("❓ 尚未完全掌握", value=bool(note['is_confused']))
+                                custom_tags_ui_db = st.text_input("🏷️ 更新自定义标签", value=note['custom_tags'], key=f"ct_db_{note['id']}")
+                                
+                                # 💡 巨无霸输入框！高度拉满到 400，再长的内容也放得下
+                                anno_ui_db = st.text_area("在此粘贴或修改你的文字注记：", value=note['user_annotation'], key=f"anno_db_{note['id']}", height=400)
+                                
+                                # 📸 支持多选并自动拼接的长图上传器！
+                                update_imgs_ui = st.file_uploader("📸 补充手写推导/截图 (支持多选，自动拼接)", type=["jpg", "png", "jpeg"], accept_multiple_files=True, key=f"up_img_db_{note['id']}")
+                                
+                                if st.form_submit_button("💾 保存所有更新"):
+                                    # 处理多图拼接逻辑
+                                    new_img_bytes = None
+                                    if update_imgs_ui:
+                                        img_bytes_list = [img.getvalue() for img in update_imgs_ui]
+                                        new_img_bytes = stitch_images_vertically(img_bytes_list)
+                                        
+                                    # 保存到数据库
+                                    db.update_note_metadata(note['id'], username, anno_ui_db, 1 if is_starred_ui_db else 0, 1 if is_confused_ui_db else 0, custom_tags_ui_db, new_img_bytes)
+                                    clear_db_cache()
+                                    st.success("状态与注记已全面更新！")
+                                    st.rerun()
