@@ -90,8 +90,18 @@ def call_ai_tutor_multi(image_bytes_list, question):
             # 大模型同时“看”多张图，建立跨页逻辑理解
             messages[0]["content"].append({"image": f"file://{os.path.abspath(temp_path)}"})
             
-    prompt_suffix = "请结合以上所有图片的内容，建立整体逻辑，输出精准且结构清晰的解答。如果是跨页题目，请拼接完整后解析。"
-    messages[0]["content"].append({"text": f"{question or '请详细解释一下核心推导步骤。'}\n\n{prompt_suffix}"})
+    # 🧠 架构师级 Prompt 优化：解决公式不渲染和“答非所问”的痛点
+    prompt_text = f"""你是一个极其专业的 AI 学习助教。请结合用户提供的笔记/题目图片，极具针对性地回答用户的疑问。
+
+用户的问题是：【 {question or '请详细解释一下这部分的重点。'} 】
+
+⚠️【极度重要：数学公式渲染与回答规范】：
+1. 你的职责是回答用户的具体提问，不要自顾自地把图里的题目全部重做一遍！
+2. 所有的行内数学公式、变量字母，必须严格使用单个美元符号包裹！例如：$f(x,y)$，绝对不要使用 \\( \\) 或普通括号。
+3. 所有的独立居中公式，必须严格使用双美元符号包裹！例如：$$x^2 + y^2 = 1$$。
+4. 请用亲切、易懂的语气进行解答。"""
+    
+    messages[0]["content"].append({"text": prompt_text})
     
     try:
         # 为了多图理解，必须用 dashscope 官方 SDK 调用 (main.py 的 process 改成了支持多图模式)
