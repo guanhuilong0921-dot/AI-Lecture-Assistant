@@ -140,16 +140,30 @@ def delete_category_and_notes(category_id, username):
     conn.commit()
     conn.close()
 
-def update_note_metadata(note_id, username, new_annotation, is_starred, is_confused, custom_tags):
+def update_note_metadata(note_id, username, user_annotation, is_starred, is_confused, custom_tags, new_anno_img_bytes=None):
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        UPDATE saved_notes 
-        SET user_annotation=%s, is_starred=%s, is_confused=%s, custom_tags=%s 
-        WHERE id=%s AND username=%s
-    ''', (new_annotation, is_starred, is_confused, custom_tags, note_id, username))
-    conn.commit()
-    conn.close()
+    if conn:
+        try:
+            with conn.cursor() as cur:
+                if new_anno_img_bytes is not None:
+                    cur.execute("""
+                        UPDATE saved_notes 
+                        SET user_annotation = %s, is_starred = %s, is_confused = %s, custom_tags = %s, annotation_image_bytes = %s
+                        WHERE id = %s AND user_id = %s
+                    """, (user_annotation, is_starred, is_confused, custom_tags, new_anno_img_bytes, note_id, username))
+                else:
+                    cur.execute("""
+                        UPDATE saved_notes 
+                        SET user_annotation = %s, is_starred = %s, is_confused = %s, custom_tags = %s
+                        WHERE id = %s AND user_id = %s
+                    """, (user_annotation, is_starred, is_confused, custom_tags, note_id, username))
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Database error: {e}")
+            return False
+        finally:
+            conn.close()
 
 def swap_notes_order(id1, order1, id2, order2, username):
     conn = get_connection()
