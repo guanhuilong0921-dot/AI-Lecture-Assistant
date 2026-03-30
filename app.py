@@ -330,16 +330,20 @@ else:
                         sub_cat_ui = c_s.text_input("📂 二级目录", placeholder="如: 高数", key="m_cat2")
                         detail_cat_ui = c_d.text_input("📄 三级目录(可选)", placeholder="如: 跨页错题", key="m_cat3")
                         custom_tags_ui = st.text_input("🏷️ 自定义标签", placeholder="期末重难点")
-                        wb_anno_ui = st.text_area("在此写下你的专属最终注记：", height=120)
-                        
+                        wb_anno_ui = st.text_area("在此写下你的专属最终注记 (可选)：", height=120)
+                        # 📸 新增：图片注记上传组件
+                        anno_img_ui = st.file_uploader("📸 附加手写推导/错题截图作为注记 (可选)", type=["jpg", "png", "jpeg"], key="anno_img_merged")
+
                         if st.form_submit_button("📁 永久存入我的专属复习空间"):
+                            # 提取上传的图片字节流
+                            anno_bytes = anno_img_ui.getvalue() if anno_img_ui else None
                             if main_cat_ui.strip() and sub_cat_ui.strip():
                                 final_sub_cat = sub_cat_ui.strip()
                                 if detail_cat_ui.strip(): final_sub_cat = f"{sub_cat_ui.strip()} / {detail_cat_ui.strip()}"
                                 
                                 # 存入数据库 (注意存图的是 stitched_bytes，data 是合并后的 data)
                                 cat_id = db.add_category(username, main_cat_ui.strip(), final_sub_cat)
-                                db.save_note_to_db(username, cat_id, res['filename'], res['image_bytes'], data, db_record_type, custom_tags_ui, wb_anno_ui)
+                                db.save_note_to_db(username, cat_id, res['filename'], res['image_bytes'], data, db_record_type, custom_tags_ui, wb_anno_ui, anno_bytes)
                                 clear_db_cache(); st.session_state.wb_merged_result = None # 💥 保存后清除缓存和合并结果
                                 st.success(f"已作为完整一页保存至 [{main_cat_ui.strip()} - {final_sub_cat}]！")
                                 # 同时清空已被选中的图片，优化体验 (根据索引删除，需要反向删)
@@ -442,6 +446,12 @@ else:
 
                         st.markdown("---")
                         st.markdown("##### ✍️ 我的专属思考与注记")
+                        st.markdown("##### ✍️ 我的专属思考与注记")
+
+                        # 🖼️ 新增：如果数据库里有图片注记，就展示出来！
+                        if note.get('annotation_image_bytes'):
+                            st.image(note['annotation_image_bytes'], caption="📸 我的手写/补充注记", use_container_width=True)
+
                         with st.form(key=f"anno_form_{note['id']}"):
                             c_s1, c_s2 = st.columns(2)
                             is_starred_ui_db = c_s1.checkbox("⭐ 设为核心重难点", value=bool(note['is_starred']))
