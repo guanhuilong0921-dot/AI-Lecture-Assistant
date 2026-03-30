@@ -95,7 +95,12 @@ def call_ai_tutor_multi(image_bytes_list, question):
     
     try:
         # 为了多图理解，必须用 dashscope 官方 SDK 调用 (main.py 的 process 改成了支持多图模式)
-        resp = MultiModalConversation.call(model='qwen-vl-plus', messages=messages)
+        # 🚀 架构师提权：把输出限制开到最大，防止长篇大论时被强制掐断！
+        resp = MultiModalConversation.call(
+            model='qwen-vl-plus', 
+            messages=messages,
+            max_tokens=4096  # 允许它一次性吐出多达 4000 个 Token
+        )
         for p in temp_paths: 
             if os.path.exists(p): os.remove(p)
         if resp.status_code == 200:
