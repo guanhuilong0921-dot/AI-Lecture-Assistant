@@ -181,14 +181,25 @@ else:
                             st.session_state.wb_sigs.remove(removed["sig"]); st.rerun()
 
             # --- 合并解析按钮逻辑 ---
+            # --- 合并解析按钮与动态难度逻辑 ---
             with c_op2:
+                # 🎛️ 新增：AI 解析深度控制台
+                st.markdown("##### 🎛️ AI 解析深度引擎")
+                parse_level = st.radio(
+                    "请选择知识蒸馏模式：", 
+                    ["🔥 极简学霸模式 (精炼考点 + 拔高难题)", "📖 详尽保姆模式 (完整推导 + 覆盖全知识点题组)"],
+                    label_visibility="collapsed"
+                )
+                
                 if not selected_indices:
                     st.button("🚀 请先勾选图片", disabled=True, use_container_width=True)
                 else:
-                    if st.button(f"🚀 合并解析选中的 {len(selected_indices)} 张图", type="primary", use_container_width=True):
-                        if len(selected_indices) < 1: st.error("至少选择一张图")
+                    if st.button(f"🚀 按设定深度解析选图", type="primary", use_container_width=True):
+                        if len(selected_indices) < 1: 
+                            st.error("至少选择一张图")
                         else:
-                            with st.spinner("⏳ 正在进行多图联合上下文理解与高精度提炼 (跨页整合版)..."):
+                            with st.spinner(f"⏳ 正在启动大模型视觉引擎 ({parse_level[:6]})..."):
+                                
                                 # 1. 准备大模型 Context (多图上传)
                                 select_bytes_list = [st.session_state.wb_images[i]["bytes"] for i in selected_indices]
                                 select_names = [st.session_state.wb_images[i]["name"] for i in selected_indices]
@@ -208,17 +219,32 @@ else:
                                     messages[0]["content"].append({"image": f"file://{os.path.abspath(p)}"})
                                 # 核心 Prompt：明确指示这是完整的一页笔记
                                 # 核心 Prompt：用绝对严厉的语气和模板，锁定 JSON 输出格式
-                                prompt_text = """这是一道跨越了多页的高难题目或完整笔记。请结合以上所有图片的内容，建立整体上下文逻辑，进行精准的解析。
+                                # 🧠 动态核心逻辑：根据用户选择生成不同的教学指令
+                                if "极简学霸" in parse_level:
+                                    level_prompt = """
+【解析深度要求】：极简拔高模式。
+1. analysis字段：请用最精炼的语言提炼核心考点，直接点出破题的“题眼”和易错坑点，完全跳过基础的加减乘除推导过程。
+2. exercise字段：不要简单的同类题。请生成 1-2 道难度极高、包含多知识点交汇的“压轴级变式题”（需附带答案详解）。"""
+                                else:
+                                    level_prompt = """
+【解析深度要求】：详尽保姆模式。
+1. analysis字段：请提供极其详尽、保姆级的知识推导过程。把每一步的逻辑依据（用了什么定理、公式）都详细写出来，确保初学者能看懂。
+2. exercise字段：不要只生成一道题。请生成一个“巩固题组”（至少 3 道题目），难度从易到难递进，必须完整覆盖图片中涉及的所有核心知识点（需附带答案详解）。"""
+
+                                # 🛡️ 架构师级合并 Prompt：动态教学指令 + 铁腕 JSON 格式锁
+                                prompt_text = f"""这是一道跨越了多页的高难题目或完整笔记。请结合以上所有图片的内容，建立整体上下文逻辑，进行精准的解析。
                                 
-                                【极度重要警告】：你是一个无情的 API 接口，你必须、且只能输出一个合法的 JSON 字典对象！绝对不要包含任何开头问候语、结尾解释！绝对不要使用 Markdown 标题！
-                                请你严格按照以下 JSON 模板输出，填入对应的内容：
-                                {
-                                    "recognition": "在这里填入题目的完整文本识别内容",
-                                    "latex": "在这里填入推导过程的核心 LaTeX 公式代码",
-                                    "analysis": "在这里填入详尽的考点解析和推理步骤",
-                                    "exercise": "在这里填入一道相关的举一反三变式题",
-                                    "mindmap": "在这里提取出三个核心关键词（用逗号分隔）"
-                                }"""
+{level_prompt}
+
+【极度重要警告】：你是一个无情的 API 接口，你必须、且只能输出一个合法的 JSON 字典对象！绝对不要包含任何开头问候语、结尾解释！绝对不要使用 Markdown 标题！
+请你严格按照以下 JSON 模板输出，填入对应的内容：
+{{
+    "recognition": "在这里填入题目的完整文本识别内容",
+    "latex": "在这里填入推导过程的核心 LaTeX 公式代码",
+    "analysis": "在这里填入符合【解析深度要求】的解析文本（支持 Markdown 排版）",
+    "exercise": "在这里填入符合【解析深度要求】的变式题组（支持 Markdown 排版）",
+    "mindmap": "在这里提取出三个核心关键词（用逗号分隔）"
+}}"""
                                 messages[0]["content"].append({"text": prompt_text})
 
                                 try:
