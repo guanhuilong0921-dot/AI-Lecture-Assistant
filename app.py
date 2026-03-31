@@ -375,16 +375,63 @@ else:
         categories = fetch_categories(username)
         if not categories: st.info("知识库空空如也，快去工作台解析归档吧！")
         else:
-            cat_options = {f"{c['main_cat']} ➡️ {c['sub_cat']}": c['id'] for c in categories}
-            c_cat, c_del_dir = st.columns([4, 1])
-            selected_cat_name = c_cat.selectbox("📂 选择目录：", list(cat_options.keys()))
-            selected_cat_id = cat_options[selected_cat_name]
+            st.caption("🎯 精准逐级检索 (已自动聚合重复目录)")
+        
+        # 将屏幕分为四个列：三级下拉框 + 一个删除按钮
+        col1, col2, col3, col_del = st.columns([2, 2, 2, 1])
+        
+        # 1. 🧠 核心重构：安全解析目录树
+        parsed_cats = []
+        for c in categories:
+            m_cat = c['main_cat'].strip()
+            s_raw = c['sub_cat']
             
-            if c_del_dir.button("⚠️ 删除该目录", type="secondary"):
-                db.delete_category_and_notes(selected_cat_id, username)
-                clear_db_cache(); st.rerun()
+            # 巧妙拆解：把带 '/' 的拆成二级和三级
+            if '/' in s_raw:
+                parts = s_raw.split('/', 1)
+                l2 = parts[0].strip()
+                l3 = parts[1].strip()
+            else:
+                l2 = s_raw.strip()
+                l3 = "基础考点"  # 容错机制：如果没有斜杠，默认归入此处
+                
+            parsed_cats.append({"id": c['id'], "l1": m_cat, "l2": l2, "l3": l3})
             
-            notes = fetch_notes(username, selected_cat_id)
+        # 2. 📚 级联第一层：学科
+        l1_list = list(set([item['l1'] for item in parsed_cats]))
+        with col1:
+            sel_l1 = st.selectbox("📚 学科", l1_list)
+            
+        # 3. 📖 级联第二层：章节 (跟随第一层动态变化)
+        l2_list = list(set([item['l2'] for item in parsed_cats if item['l1'] == sel_l1]))
+        with col2:
+            sel_l2 = st.selectbox("📖 章节", l2_list)
+            
+        # 4. 📝 级联第三层：考点 (跟随第一、二层动态变化)
+        l3_list = list(set([item['l3'] for item in parsed_cats if item['l1'] == sel_l1 and item['l2'] == sel_l2]))
+        with col3:
+            sel_l3 = st.selectbox("📝 考点", l3_list)
+            
+        # 5. 🛡️ 自动聚合重复目录：找出所有符合这三个名字的底层 ID
+        target_ids = [item['id'] for item in parsed_cats if item['l1'] == sel_l1 and item['l2'] == sel_l2 and item['l3'] == sel_l3]
+        
+        # 6. ⚠️ 批量删除逻辑
+        with col_del:
+            st.write("") # 占位换行，让按钮和旁边的选择框在同一水平线
+            st.write("")
+            if st.button("⚠️ 删除", type="secondary"):
+                for t_id in target_ids:
+                    db.delete_category_and_notes(t_id, username) # 循环干掉所有同名的重复空壳
+                clear_db_cache()
+                st.rerun()
+                
+        # 7. 🚀 批量拉取聚合笔记
+        notes = []
+        for t_id in target_ids:
+            # 把所有重复目录下的笔记拼接在一起，完美解决你的痛点！
+            notes.extend(fetch_notes(username, t_id))
+            
+        # ====== 下面正常接你循环展示卡片的逻辑： for note in notes: ======
             # ... 复习空间的检索过滤和卡片展示逻辑保持不变 ...
             # 💡 (关键：由于 CSS 已注入，复习空间里的 KaTeX 公式会自动拥有横向滚动条！)
             
