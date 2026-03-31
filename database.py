@@ -149,21 +149,22 @@ def update_note_metadata(note_id, username, user_annotation, is_starred, is_conf
                     cur.execute("""
                         UPDATE saved_notes 
                         SET user_annotation = %s, is_starred = %s, is_confused = %s, custom_tags = %s, annotation_image_bytes = %s
-                        WHERE id = %s AND user_id = %s
+                        WHERE id = %s AND username = %s
                     """, (user_annotation, is_starred, is_confused, custom_tags, new_anno_img_bytes, note_id, username))
                 else:
                     cur.execute("""
                         UPDATE saved_notes 
                         SET user_annotation = %s, is_starred = %s, is_confused = %s, custom_tags = %s
-                        WHERE id = %s AND user_id = %s
+                        WHERE id = %s AND username = %s
                     """, (user_annotation, is_starred, is_confused, custom_tags, note_id, username))
             conn.commit()
-            return True
+            return "SUCCESS"
         except Exception as e:
             print(f"Database error: {e}")
-            return False
+            return f"DB_ERROR: {str(e)}"
         finally:
             conn.close()
+    return "CONNECTION_FAILED"
 
 def swap_notes_order(id1, order1, id2, order2, username):
     conn = get_connection()
