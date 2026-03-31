@@ -460,6 +460,10 @@ else:
                                     reply_db = call_ai_tutor_multi([note['image_bytes']], tutor_q_db)
                                     st.success("✅ 助教回复：")
                                     st.markdown(reply_db)
+                                    # 👇 就是把下面这 3 行代码，直接粘贴在 st.success 或 st.markdown 的下面！
+                                with st.expander("📋 点此一键无损复制（用于粘贴到你的专属注记，绝对不会乱码！）"):
+                                    st.info("💡 必须点击下方黑框右上角的【复制（Copy）】小图标！千万不要用鼠标拖拽文字！")
+                                    st.code(reply_db, language="markdown")
 
                         st.markdown("---")
                         st.markdown("##### ✍️ 我的专属思考与注记")
@@ -489,26 +493,24 @@ else:
                                 update_imgs_ui = st.file_uploader("📸 补充手写推导/截图 (支持多选，自动拼接)", type=["jpg", "png", "jpeg"], accept_multiple_files=True, key=f"up_img_db_{note['id']}")
                                 
                                 if st.form_submit_button("💾 保存所有更新"):
-                                    # 处理多图拼接逻辑
                                     new_img_bytes = None
                                     if update_imgs_ui:
                                         img_bytes_list = [img.getvalue() for img in update_imgs_ui]
                                         new_img_bytes = stitch_images_vertically(img_bytes_list)
                                         
-                                    # 🛡️ 防线 1：强制把 note['id'] 转换成整数 int()，防止数据库不认！
-                                    is_success = db.update_note_metadata(int(note['id']), username, anno_ui_db, 1 if is_starred_ui_db else 0, 1 if is_confused_ui_db else 0, custom_tags_ui_db, new_img_bytes)
+                                    # 🧠 接收从底层穿透出来的真实反馈
+                                    db_result = db.update_note_metadata(int(note['id']), username, anno_ui_db, 1 if is_starred_ui_db else 0, 1 if is_confused_ui_db else 0, custom_tags_ui_db, new_img_bytes)
                                     
-                                    if is_success:
-                                        # 💣 防线 2：终极杀手锏，暴力炸毁 Streamlit 的所有缓存！
+                                    if db_result == "SUCCESS":
                                         st.cache_data.clear() 
                                         try:
-                                            clear_db_cache() # 顺便调用你原有的清除函数
+                                            clear_db_cache()
                                         except:
                                             pass
-                                            
                                         st.success("✅ 注记已永久存入数据库！正在强制刷新数据...")
                                         import time
-                                        time.sleep(1) # 停顿一秒，让子弹飞一会儿，确保数据库写入完毕
+                                        time.sleep(1)
                                         st.rerun()
                                     else:
-                                        st.error("❌ 数据库底层更新失败（可能是卡片 ID 与用户不匹配）！")
+                                        # 💣 直接把底层的真凶砸在网页红框里！
+                                        st.error(f"❌ 数据库底层报错了！真凶是：{db_result}")
