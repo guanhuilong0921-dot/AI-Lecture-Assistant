@@ -495,8 +495,20 @@ else:
                                         img_bytes_list = [img.getvalue() for img in update_imgs_ui]
                                         new_img_bytes = stitch_images_vertically(img_bytes_list)
                                         
-                                    # 保存到数据库
-                                    db.update_note_metadata(note['id'], username, anno_ui_db, 1 if is_starred_ui_db else 0, 1 if is_confused_ui_db else 0, custom_tags_ui_db, new_img_bytes)
-                                    clear_db_cache()
-                                    st.success("状态与注记已全面更新！")
-                                    st.rerun()
+                                    # 🛡️ 防线 1：强制把 note['id'] 转换成整数 int()，防止数据库不认！
+                                    is_success = db.update_note_metadata(int(note['id']), username, anno_ui_db, 1 if is_starred_ui_db else 0, 1 if is_confused_ui_db else 0, custom_tags_ui_db, new_img_bytes)
+                                    
+                                    if is_success:
+                                        # 💣 防线 2：终极杀手锏，暴力炸毁 Streamlit 的所有缓存！
+                                        st.cache_data.clear() 
+                                        try:
+                                            clear_db_cache() # 顺便调用你原有的清除函数
+                                        except:
+                                            pass
+                                            
+                                        st.success("✅ 注记已永久存入数据库！正在强制刷新数据...")
+                                        import time
+                                        time.sleep(1) # 停顿一秒，让子弹飞一会儿，确保数据库写入完毕
+                                        st.rerun()
+                                    else:
+                                        st.error("❌ 数据库底层更新失败（可能是卡片 ID 与用户不匹配）！")
