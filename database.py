@@ -91,7 +91,7 @@ def save_note_to_db(username, category_id, filename, image_bytes, data, record_t
                 # 👈 SQL 语句也要加上 annotation_image_bytes
                 cur.execute("""
                     INSERT INTO saved_notes 
-                    (user_id, category_id, filename, image_bytes, recognition, latex, analysis, exercise, tags, record_type, custom_tags, user_annotation, annotation_image_bytes) 
+                    (username, category_id, filename, image_bytes, recognition, latex, analysis, exercise, tags, record_type, custom_tags, user_annotation, annotation_image_bytes) 
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (username, category_id, filename, image_bytes, 
                       data.get('recognition',''), data.get('latex',''), 
