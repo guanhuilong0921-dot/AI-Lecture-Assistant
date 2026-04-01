@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高瓴 AI 学习 OS - 复习空间</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <style>
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(229, 231, 235, 0.5);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04);
+        }
+        /* 解决长公式溢出问题 */
+        .math-scroll {
+            overflow-x: auto;
+            padding-bottom: 10px;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-8" style="background-image: radial-gradient(#d1d5db 1px, transparent 1px); background-size: 24px 24px;">
+
+    <div class="max-w-6xl mx-auto space-y-6">
+        <div class="glass-panel p-6 rounded-2xl flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-gray-800">📚 我的专属复习空间</h1>
+            <div class="space-x-4">
+                <button onclick="window.location.href='workspace.html'" class="text-blue-600 hover:text-blue-800 font-medium transition">⬅️ 返回工作台</button>
+                <button onclick="window.location.href='index.html'" class="text-gray-500 hover:text-red-500 font-medium transition">🚪 退出</button>
+            </div>
+        </div>
+
+        <div class="flex flex-col md:flex-row gap-8 items-start">
+            
+            <div class="w-full md:w-1/4 glass-panel p-6 rounded-2xl sticky top-8">
+                <h3 class="text-lg font-bold text-gray-800 mb-4">🎛️ 知识导航</h3>
+                
+                <div class="mb-6 space-y-3">
+                    <label class="block text-sm font-bold text-gray-700">类型筛选</label>
+                    <select id="filterType" class="w-full border border-gray-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="all">全部内容</option>
+                        <option value="error">🚨 仅看错题陷阱</option>
+                        <option value="note">📚 仅看笔记总结</option>
+                    </select>
+                </div>
+
+                <hr class="border-gray-200 mb-4">
+
+                <div id="categoryTree" class="space-y-2 text-sm text-gray-700 font-medium">
+                    <div class="text-gray-400 text-xs">加载目录中...</div>
+                </div>
+            </div>
+
+            <div id="notesContainer" class="w-full md:w-3/4 grid grid-cols-1 gap-8">
+                <div class="text-center text-gray-500 py-10 bg-white rounded-2xl border border-dashed border-gray-300">
+                    ⏳ 正在从云端拉取记忆...
+                </div>
+            </div>
+            
+        </div>
+    </div>
+
+    <script>
+        // ================= 全局状态管理器 =================
+        let allNotes = [];          // 缓存从后端拉取的所有笔记
+        let currentCategoryId = null; // 当前选中的目录 ID（null 代表全部）
+        
+        document.addEventListener('DOMContentLoaded', async () => {
+            const container = document.getElementById('notesContainer');
+            const categoryTree = document.getElementById('categoryTree');
+            const filterTypeSelect = document.getElementById('filterType');
+            const username = 'huilong'; // 当前用户
+
+            // ================= 1. 拉取左侧目录树 =================
+            try {
+                const catResponse = await fetch(`http://127.0.0.1:8000/api/categories/${username}`);
+                const catResult = await catResponse.json();
+                
+                if (catResponse.ok && catResult.status === 'success') {
+                    const categories = catResult.data;
+                    categoryTree.innerHTML = ''; 
+                    
+                    const allBtn = document.createElement('button');
+                    allBtn.className = "cat-btn w-full text-left px-3 py-2 rounded-lg font-bold text-blue-600 bg-blue-50 transition truncate mb-2";
+                    allBtn.innerText = "🌟 全部内容";
+                    allBtn.onclick = () => { currentCategoryId = null; updateActiveBtn(allBtn); renderFilteredNotes(); };
+                    categoryTree.appendChild(allBtn);
+
+                    // 🌟 核心算法：将扁平数据按 main_cat 分组
+                    const treeData = {};
+                    categories.forEach(cat => {
+                        if (!treeData[cat.main_cat]) treeData[cat.main_cat] = [];
+                        treeData[cat.main_cat].push(cat);
+                    });
+
+                    // 🌟 渲染逐级展开的树状结构
+                    for (const [mainCat, subCats] of Object.entries(treeData)) {
+                        const details = document.createElement('details');
+                        details.className = "mb-2 group";
+                        // 默认展开第一个目录，其他的折叠
+                        if (Object.keys(treeData)[0] === mainCat) details.open = true; 
+
+                        details.innerHTML = `
+                            <summary class="font-bold text-gray-800 cursor-pointer p-2 rounded-lg hover:bg-gray-100 transition select-none outline-none flex justify-between">
+                                <span>📁 ${mainCat}</span>
+                                <span class="text-gray-400 group-open:rotate-180 transition-transform">▼</span>
+                            </summary>`;
+                        
+                        const subDiv = document.createElement('div');
+                        subDiv.className = "pl-4 mt-1 space-y-1 border-l-2 border-gray-100 ml-2";
+
+                        subCats.forEach(cat => {
+                            const btn = document.createElement('button');
+                            btn.className = "cat-btn w-full text-left px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition truncate";
+                            btn.innerText = `📄 ${cat.sub_cat}`;
+                            btn.onclick = () => { currentCategoryId = cat.id; updateActiveBtn(btn); renderFilteredNotes(); };
+                            subDiv.appendChild(btn);
+                        });
+                        details.appendChild(subDiv);
+                        categoryTree.appendChild(details);
+                    }
+                }
+            } catch (e) {
+                console.error("目录拉取失败", e);
+            }
+
+            // ================= 2. 监听下拉框变化 =================
+            filterTypeSelect.addEventListener('change', () => {
+                renderFilteredNotes(); // 只要下拉框变了，就重新过滤渲染
+            });
+
+            // ================= 3. 首次拉取所有笔记卡片 =================
+            try {
+                const response = await fetch(`http://127.0.0.1:8000/api/notes/${username}`);
+                const result = await response.json();
+
+                if (response.ok && result.status === 'success') {
+                    allNotes = result.data; // 把数据存进全局变量
+                    renderFilteredNotes();  // 首次调用渲染引擎
+                } else {
+                    container.innerHTML = `<div class="text-center text-red-500 py-10">❌ 加载失败：${result.detail}</div>`;
+                }
+            } catch (error) {
+                container.innerHTML = `<div class="text-center text-red-500 py-10">❌ 网络错误，请检查后端是否运行</div>`;
+            }
+        });
+
+        // ================= 核心：过滤与渲染引擎 =================
+        function renderFilteredNotes() {
+            const container = document.getElementById('notesContainer');
+            const filterType = document.getElementById('filterType').value;
+
+            // 1. 开始对 allNotes 进行过滤
+            let filteredNotes = allNotes;
+
+            // 按目录过滤
+            if (currentCategoryId !== null) {
+                filteredNotes = filteredNotes.filter(note => note.category_id === currentCategoryId);
+            }
+
+            // 按类型过滤 (错题/总结)
+            if (filterType !== 'all') {
+                filteredNotes = filteredNotes.filter(note => note.record_type === filterType);
+            }
+
+            // 2. 如果过滤后没数据
+            if (filteredNotes.length === 0) {
+                container.innerHTML = '<div class="text-center text-gray-500 py-10 bg-white rounded-2xl border border-dashed border-gray-300">空空如也，当前分类下没有找到匹配的笔记哦！</div>';
+                return;
+            }
+
+            // 3. 开始渲染 HTML
+            container.innerHTML = '';
+            filteredNotes.forEach(note => {
+                const icon = note.record_type === 'error' ? '🚨 错题陷阱' : '📚 知识总结';
+                const cardHTML = `
+                            <div class="glass-panel p-6 rounded-2xl flex flex-col md:flex-row gap-6 hover:shadow-xl transition duration-300">
+                                <div class="w-full md:w-1/3 flex-shrink-0">
+                                    <img src="${note.image_base64}" alt="笔记图片" class="w-full rounded-xl border border-gray-200 shadow-sm object-contain bg-white">
+                                </div>
+                                <div class="w-full md:w-2/3 flex flex-col space-y-4">
+                                    <div class="flex justify-between items-start">
+                                        <div>
+                                            <span class="text-sm font-bold text-gray-500 bg-gray-100 px-3 py-1 rounded-full border">${icon}</span>
+                                            <span class="ml-2 text-sm font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">🏷️ ${note.tags || '暂无标签'}</span>
+                                        </div>
+                                        <div class="space-x-2 flex-shrink-0">
+                                            <button onclick="setTutorContext(${note.id}, this)" class="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition bg-indigo-50 px-2 py-1 rounded">🙋 加入问答</button>
+                                            <button onclick="editNote(${note.id})" class="text-xs font-bold text-blue-500 hover:text-blue-700 transition">✏️ 编辑</button>
+                                            <button onclick="deleteNote(${note.id})" class="text-xs font-bold text-red-500 hover:text-red-700 transition">🗑️ 删除</button>
+                                        </div>
+                                    </div>
+
+                                    <details id="anno-display-${note.id}" class="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg group cursor-pointer ${note.user_annotation ? '' : 'hidden'}">
+                                        <summary class="font-bold text-yellow-800 text-sm outline-none select-none flex justify-between items-center">
+                                            <span>✍️ 我的注记</span>
+                                            <span class="text-xs text-yellow-600 font-normal group-open:hidden">点击展开 ▼</span>
+                                            <span class="text-xs text-yellow-600 font-normal hidden group-open:inline">收起 ▲</span>
+                                        </summary>
+                                        <div id="anno-text-${note.id}" class="text-gray-700 text-sm whitespace-pre-wrap math-scroll mt-3 pt-3 border-t border-yellow-200 cursor-text">${note.user_annotation || ''}</div>
+                                    </details>
+
+                                    <div id="anno-edit-${note.id}" class="hidden flex-col space-y-3 mt-2">
+                                        <textarea id="anno-input-${note.id}" class="w-full border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm text-gray-700 resize-none shadow-inner" rows="5">${note.user_annotation || ''}</textarea>
+                                        <div class="flex space-x-3">
+                                            <button onclick="saveNoteEdit(${note.id})" class="bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-600 shadow-md transition">💾 保存修改</button>
+                                            <button onclick="cancelEdit(${note.id})" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-300 transition">取消</button>
+                                        </div>
+                                    </div>
+
+                                    <details class="bg-gray-50 p-4 rounded-xl border border-gray-100 group cursor-pointer" open>
+                                        <summary class="font-bold text-gray-800 text-sm outline-none select-none flex justify-between items-center mb-1">
+                                            <span>🧠 核心考点剖析</span>
+                                            <span class="text-xs text-gray-400 font-normal group-open:hidden">点击展开 ▼</span>
+                                            <span class="text-xs text-gray-400 font-normal hidden group-open:inline">收起 ▲</span>
+                                        </summary>
+                                        <div class="text-gray-600 text-sm whitespace-pre-wrap leading-relaxed math-scroll mt-2 pt-2 border-t border-gray-200 cursor-text">${note.analysis}</div>
+                                    </details>
+                                    
+                                    <details class="bg-blue-50 p-4 rounded-xl border border-blue-100 mt-auto group cursor-pointer">
+                                        <summary class="font-bold text-blue-800 text-sm outline-none select-none flex justify-between items-center mb-1">
+                                            <span>🎯 举一反三变式题</span>
+                                            <span class="text-xs text-blue-500 font-normal group-open:hidden">点击展开 ▼</span>
+                                            <span class="text-xs text-blue-500 font-normal hidden group-open:inline">收起 ▲</span>
+                                        </summary>
+                                        <div class="text-gray-700 text-sm whitespace-pre-wrap leading-relaxed math-scroll mt-2 pt-2 border-t border-blue-200 cursor-text">${note.exercise}</div>
+                                    </details>
+                                </div>
+                            </div>
+                        `;
+                container.innerHTML += cardHTML;
+            });
+
+            // 4. 通知 MathJax 渲染新塞进去的公式
+            if (window.MathJax) {
+                MathJax.typesetPromise([container]);
+            }
+        }
+
+        // ================= 辅助函数：更新目录按钮的选中样式 =================
+        function updateActiveBtn(clickedBtn) {
+            // 把所有按钮的样式重置成普通灰色
+            document.querySelectorAll('.cat-btn').forEach(btn => {
+                btn.className = "cat-btn w-full text-left px-3 py-2 rounded-lg text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition truncate";
+            });
+            // 把被点击的按钮变成加粗蓝色
+            clickedBtn.className = "cat-btn w-full text-left px-3 py-2 rounded-lg font-bold text-blue-600 bg-blue-50 transition truncate";
+        }
+
+        // ================= 卡片交互逻辑 (删除/编辑) =================
+        window.deleteNote = async function(noteId) {
+            if (!confirm("⚠️ 确定要彻底删除这张复习卡片吗？删了可就找不回来了哦！")) return;
+            try {
+                const response = await fetch(`http://127.0.0.1:8000/api/notes/${noteId}?username=huilong`, { method: 'DELETE' });
+                if (response.ok) window.location.reload(); 
+                else alert("❌ 删除失败");
+            } catch (error) {
+                alert("❌ 网络错误！");
+            }
+        };
+
+        window.editNote = function(noteId) {
+            document.getElementById(`anno-display-${noteId}`).classList.add('hidden');
+            document.getElementById(`anno-edit-${noteId}`).classList.remove('hidden');
+            document.getElementById(`anno-edit-${noteId}`).classList.add('flex');
+        };
+
+        window.cancelEdit = function(noteId) {
+            const text = document.getElementById(`anno-text-${noteId}`).innerText;
+            if (text.trim()) document.getElementById(`anno-display-${noteId}`).classList.remove('hidden');
+            document.getElementById(`anno-edit-${noteId}`).classList.add('hidden');
+            document.getElementById(`anno-edit-${noteId}`).classList.remove('flex');
+        };
+
+        window.saveNoteEdit = async function(noteId) {
+            const newAnno = document.getElementById(`anno-input-${noteId}`).value;
+            try {
+                const response = await fetch(`http://127.0.0.1:8000/api/notes/${noteId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: 'huilong', user_annotation: newAnno })
+                });
+                if (response.ok) window.location.reload();
+                else alert("❌ 保存失败！");
+            } catch (error) {
+                alert("❌ 网络错误！");
+            }
+        };
+        // ================= 全局悬浮助教核心逻辑 =================
+        let currentTutorNoteId = null; // 当前正在解答的笔记 ID
+
+        // 打开/关闭悬浮窗
+        window.toggleGlobalTutor = function() {
+            const win = document.getElementById('global-tutor-window');
+            win.classList.toggle('hidden');
+            win.classList.toggle('flex');
+        };
+
+        // 卡片上点击“问助教”时触发：锁定题目，并弹窗
+        window.setTutorContext = function(noteId, noteTag) {
+            currentTutorNoteId = noteId;
+            document.getElementById('tutor-context-hint').innerText = `📌 当前解答: ${noteTag} (ID: ${noteId})`;
+            
+            // 确保窗口是打开状态
+            const win = document.getElementById('global-tutor-window');
+            if (win.classList.contains('hidden')) {
+                toggleGlobalTutor();
+            }
+            
+            // 焦点自动移到输入框
+            document.getElementById('tutor-global-input').focus();
+        };
+
+        // 一键复制功能
+        window.copyTutorText = function(btnElement, textToCopy) {
+            // 解码传入的字符串，并复制到剪贴板
+            const decodedText = decodeURIComponent(textToCopy);
+            navigator.clipboard.writeText(decodedText).then(() => {
+                const originalText = btnElement.innerText;
+                btnElement.innerText = "✅ 复制成功！";
+                btnElement.classList.replace('text-gray-500', 'text-green-600');
+                setTimeout(() => {
+                    btnElement.innerText = originalText;
+                    btnElement.classList.replace('text-green-600', 'text-gray-500');
+                }, 2000);
+            });
+        };
+
+        // 发送消息
+        window.sendGlobalTutor = async function() {
+            if (!currentTutorNoteId) {
+                alert("⚠️ 请先在卡片上点击【🙋 问助教】选定你要问的题目！");
+                return;
+            }
+
+            const inputEl = document.getElementById('tutor-global-input');
+            const btnEl = document.getElementById('tutor-global-send-btn');
+            const chatHistory = document.getElementById('tutor-chat-history');
+            const question = inputEl.value.trim();
+            
+            if (!question) return;
+
+            // 1. 把用户的提问添加到聊天框 (靠右显示)
+            const userMsg = `
+                <div class="bg-indigo-100 p-3 rounded-xl shadow-sm border border-indigo-200 self-end w-5/6 text-right">
+                    ${question}
+                </div>`;
+            chatHistory.innerHTML += userMsg;
+            
+            // 滚动到底部并清空输入框
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+            inputEl.value = '';
+
+            // 改变按钮状态
+            const oldBtnText = btnEl.innerText;
+            btnEl.innerText = "⏳...";
+            btnEl.disabled = true;
+
+            try {
+                // 2. 发送请求给 FastAPI
+                const response = await fetch('http://127.0.0.1:8000/api/ask_tutor', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        note_id: currentTutorNoteId,
+                        username: 'huilong',
+                        question: question
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.status === 'success') {
+                    // 为了复制时不破坏格式，我们将文本进行 URI 编码传给 onclick 函数
+                    const encodedReply = encodeURIComponent(result.reply);
+                    
+                    // 3. 把 AI 的回答添加到聊天框 (靠左显示)，并且带上【复制按钮】
+                    const aiMsg = `
+                        <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 self-start w-11/12 relative">
+                            <div class="math-scroll mb-6">${result.reply}</div>
+                            <button onclick="copyTutorText(this, '${encodedReply}')" class="absolute bottom-2 right-2 text-xs font-bold text-gray-500 hover:text-indigo-600 bg-gray-100 px-2 py-1 rounded transition">
+                                📋 复制这段回答
+                            </button>
+                        </div>`;
+                    chatHistory.innerHTML += aiMsg;
+                    chatHistory.scrollTop = chatHistory.scrollHeight;
+                    
+                    // 通知 MathJax 渲染新回答里的数学公式
+                    if (window.MathJax) {
+                        MathJax.typesetPromise([chatHistory]);
+                    }
+                } else {
+                    alert("❌ 助教调用失败：" + result.detail);
+                }
+            } catch (error) {
+                alert("❌ 网络错误！");
+            } finally {
+                btnEl.innerText = oldBtnText;
+                btnEl.disabled = false;
+            }
+        };
+    </script>
+<div onclick="toggleGlobalTutor()" class="fixed bottom-8 right-8 bg-indigo-600 text-white p-4 rounded-full shadow-2xl cursor-pointer hover:bg-indigo-700 transition transform hover:scale-110 z-50 flex items-center justify-center">
+        <span class="text-2xl">🤖</span>
+    </div>
+
+    <div id="global-tutor-window" class="fixed bottom-24 right-8 w-96 bg-white rounded-2xl shadow-2xl border border-gray-200 flex-col hidden z-50 overflow-hidden">
+        <div class="bg-indigo-600 text-white p-4 font-bold flex justify-between items-center shadow-md">
+            <span>🤖 高瓴专属 AI 助教</span>
+            <button onclick="toggleGlobalTutor()" class="hover:text-gray-200 text-lg">✖</button>
+        </div>
+
+        <div id="global-tutor-window" style="resize: both;" class="fixed bottom-24 right-8 w-96 min-w-[300px] min-h-[400px] max-w-[80vw] max-h-[80vh] bg-white rounded-2xl shadow-2xl border border-gray-200 flex-col hidden z-50 overflow-auto"></div>
+        
+        <div id="tutor-chat-history" class="p-4 h-96 overflow-y-auto flex flex-col space-y-4 bg-gray-50 text-sm">
+            <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 self-start w-5/6">
+                你好！我是你的 AI 助教。请点击任意卡片上的【🙋 问助教】按钮选中一道题，然后向我提问吧！
+            </div>
+        </div>
+        
+        <div class="p-3 border-t border-gray-200 bg-white">
+            <div id="tutor-context-hint" class="text-xs text-indigo-500 mb-2 font-bold truncate">📌 状态：请先在左侧卡片选择题目</div>
+            <div class="flex space-x-2">
+                <input type="text" id="tutor-global-input" class="flex-1 border border-gray-300 rounded-lg p-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500" placeholder="输入你的疑问...">
+                <button onclick="sendGlobalTutor()" id="tutor-global-send-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 transition">发送</button>
+            </div>
+        </div>
+    </div>
+    <div onclick="toggleGlobalTutor()" class="fixed bottom-8 right-8 bg-indigo-600 text-white p-4 rounded-full shadow-2xl cursor-pointer hover:bg-indigo-700 transition transform hover:scale-110 z-50 flex items-center justify-center">
+        <span class="text-2xl">🤖</span>
+    </div>
+
+    <div id="global-tutor-window" style="resize: both;" class="fixed bottom-24 right-8 w-96 min-w-[300px] min-h-[400px] max-w-[80vw] max-h-[80vh] bg-white rounded-2xl shadow-2xl border border-gray-200 flex-col hidden z-50 overflow-auto">
+        <div class="bg-indigo-600 text-white p-4 font-bold flex justify-between items-center shadow-md">
+            <span>🤖 沉浸式 AI 助教</span>
+            <button onclick="toggleGlobalTutor()" class="hover:text-gray-200 text-lg">✖</button>
+        </div>
+        
+        <div id="tutor-chat-history" class="p-4 flex-1 overflow-y-auto flex flex-col space-y-4 bg-gray-50 text-sm min-h-[250px]">
+            <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 self-start w-5/6">
+                你好！请在左侧卡片点击【🙋 加入问答】选择一张或多张题目，然后向我提问吧！
+            </div>
+        </div>
+        
+        <div class="p-3 border-t border-gray-200 bg-white">
+            <div id="tutor-context-hint" class="text-xs text-indigo-500 mb-2 font-bold truncate">📌 状态：未选择题目</div>
+            <div class="flex space-x-2">
+                <input type="text" id="tutor-global-input" class="flex-1 border border-gray-300 rounded-lg p-2 text-sm focus:outline-none focus:border-indigo-500" placeholder="输入疑问...">
+                <button onclick="sendGlobalTutor()" id="tutor-global-send-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700">发送</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedTutorNotes = new Set(); // 记录所有被勾选的题目 ID
+
+        window.toggleGlobalTutor = function() {
+            const win = document.getElementById('global-tutor-window');
+            win.classList.toggle('hidden');
+            win.classList.toggle('flex');
+        };
+
+        window.setTutorContext = function(noteId, btnElement) {
+            if (selectedTutorNotes.has(noteId)) {
+                selectedTutorNotes.delete(noteId); // 取消选中
+                btnElement.innerText = "🙋 加入问答";
+                btnElement.classList.replace('bg-indigo-600', 'bg-indigo-50');
+                btnElement.classList.replace('text-white', 'text-indigo-600');
+            } else {
+                selectedTutorNotes.add(noteId); // 增加选中
+                btnElement.innerText = "✅ 已选中";
+                btnElement.classList.replace('bg-indigo-50', 'bg-indigo-600');
+                btnElement.classList.replace('text-indigo-600', 'text-white');
+                
+                const win = document.getElementById('global-tutor-window');
+                if (win.classList.contains('hidden')) toggleGlobalTutor();
+            }
+            
+            const hint = document.getElementById('tutor-context-hint');
+            hint.innerText = selectedTutorNotes.size === 0 ? "📌 状态：请先在左侧卡片选择题目" : `📌 已选中 ${selectedTutorNotes.size} 道题，准备合并提问`;
+        };
+
+        window.copyTutorText = function(btnElement, textToCopy) {
+            navigator.clipboard.writeText(decodeURIComponent(textToCopy)).then(() => {
+                const old = btnElement.innerText;
+                btnElement.innerText = "✅ 复制成功";
+                btnElement.classList.replace('text-gray-500', 'text-green-600');
+                setTimeout(() => { btnElement.innerText = old; btnElement.classList.replace('text-green-600', 'text-gray-500'); }, 2000);
+            });
+        };
+
+        window.sendGlobalTutor = async function() {
+            if (selectedTutorNotes.size === 0) { alert("⚠️ 请至少在一张卡片上点击【🙋 加入问答】！"); return; }
+
+            const inputEl = document.getElementById('tutor-global-input');
+            const btnEl = document.getElementById('tutor-global-send-btn');
+            const chatHistory = document.getElementById('tutor-chat-history');
+            const question = inputEl.value.trim();
+            if (!question) return;
+
+            chatHistory.innerHTML += `<div class="bg-indigo-100 p-3 rounded-xl shadow-sm border border-indigo-200 self-end w-5/6 text-right mb-4">${question}</div>`;
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+            inputEl.value = '';
+            
+            const oldBtnText = btnEl.innerText;
+            btnEl.innerText = "⏳...";
+            btnEl.disabled = true;
+
+            try {
+                const response = await fetch('http://127.0.0.1:8000/api/ask_tutor', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        note_ids: Array.from(selectedTutorNotes), // 发送多张图片的 ID 数组
+                        username: 'huilong',
+                        question: question
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.status === 'success') {
+                    const encodedReply = encodeURIComponent(result.reply);
+                    chatHistory.innerHTML += `
+                        <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 self-start w-11/12 relative mb-4">
+                            <div class="math-scroll mb-8">${result.reply}</div>
+                            <button onclick="copyTutorText(this, '${encodedReply}')" class="absolute bottom-2 right-2 text-xs font-bold text-gray-500 hover:text-indigo-600 bg-gray-100 px-2 py-1 rounded transition">📋 一键复制到笔记</button>
+                        </div>`;
+                    chatHistory.scrollTop = chatHistory.scrollHeight;
+                    if (window.MathJax) MathJax.typesetPromise([chatHistory]);
+                } else {
+                    alert("❌ 助教调用失败：" + result.detail);
+                }
+            } catch (error) {
+                alert("❌ 网络错误！");
+            } finally {
+                btnEl.innerText = oldBtnText;
+                btnEl.disabled = false;
+            }
+        };
+    </script>
+</body>
+</html>

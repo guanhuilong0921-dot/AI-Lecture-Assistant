@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高瓴 AI 学习 OS - 工作台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        window.MathJax = {
+            tex: {
+                // 告诉 MathJax：单美元符 $ 是行内公式，双美元符 $$ 是独立成行的公式
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        /* 简单的玻璃态微拟物效果 */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(229, 231, 235, 0.5);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04);
+        }
+        .dropzone-hover {
+            background: linear-gradient(145deg, rgba(240,249,255,0.9) 0%, rgba(224,242,254,0.6) 100%);
+            border-color: #3B82F6 !important;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-8" style="background-image: radial-gradient(#d1d5db 1px, transparent 1px); background-size: 24px 24px;">
+
+    <div class="max-w-5xl mx-auto space-y-6">
+        <div class="glass-panel p-6 rounded-2xl flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-gray-800">🔮 AI 知识提取工作台</h1>
+            <div class="space-x-4">
+                <button onclick="window.location.href='review.html'" class="text-blue-600 hover:text-blue-800 font-medium transition">📚 前往复习空间 ➡️</button>
+                <button onclick="window.location.href='index.html'" class="text-gray-500 hover:text-red-500 font-medium transition">🚪 退出登录</button>
+            </div>
+        </div>
+
+        <div class="glass-panel p-8 rounded-2xl">
+            <h2 class="text-lg font-bold text-gray-700 mb-4">📥 投递学习资料 (Dropzone)</h2>
+            
+            <div id="dropzone" class="border-2 border-dashed border-gray-400 rounded-2xl p-16 text-center cursor-pointer transition duration-300 bg-white"
+                 onclick="document.getElementById('fileInput').click()">
+                <div class="text-4xl mb-4">📸</div>
+                <p class="text-gray-600 font-medium">点击此处选择图片，或将图片拖拽至此</p>
+                <p class="text-sm text-gray-400 mt-2">支持 JPG, PNG 格式多图上传</p>
+                <input type="file" id="fileInput" multiple accept="image/*" class="hidden">
+            </div>
+
+            <div id="previewContainer" class="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4 hidden">
+                </div>
+
+            <button id="processBtn" class="mt-8 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg transition duration-200 hidden">
+    🚀 开始调用大模型解析
+</button>
+
+<div id="resultContainer" class="mt-8 border-t pt-8 hidden">
+    <h3 class="text-xl font-bold text-gray-800 mb-6">✨ AI 解析报告</h3>
+    
+    <div class="space-y-6">
+        <div>
+            <span class="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-bold shadow-sm">🏷️ 核心标签</span>
+            <span id="resTags" class="ml-3 text-gray-700 font-medium"></span>
+        </div>
+        
+        <div class="bg-gray-50 p-6 rounded-xl border border-gray-200 shadow-inner">
+            <h4 class="font-bold text-gray-800 mb-3 text-lg">🧠 详尽解析:</h4>
+            <div id="resAnalysis" class="text-gray-600 whitespace-pre-wrap leading-relaxed"></div>
+        </div>
+        
+        <div class="bg-blue-50 p-6 rounded-xl border border-blue-100 shadow-inner">
+            <h4 class="font-bold text-blue-800 mb-3 text-lg">🎯 举一反三变式题:</h4>
+            <div id="resExercise" class="text-gray-700 whitespace-pre-wrap leading-relaxed"></div>
+            <div class="mt-10 border-t-2 border-dashed border-gray-200 pt-8">
+            <h4 class="font-bold text-gray-800 mb-4 text-lg">💾 存入我的复习空间</h4>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <input type="text" id="mainCat" placeholder="📚 一级目录 (如: 大一上)" class="border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                <input type="text" id="subCat" placeholder="📂 二级目录 (如: 高数)" class="border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                <input type="text" id="detailCat" placeholder="📄 三级目录 (可选, 如: 级数)" class="border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <select id="recordType" class="border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                    <option value="error">🚨 错题陷阱</option>
+                    <option value="note">📚 知识总结</option>
+                </select>
+                <input type="text" id="customTags" placeholder="🏷️ 自定义标签 (多个标签用逗号隔开)" class="border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+
+            <div class="mb-6">
+                <textarea id="userAnnotation" rows="3" placeholder="✍️ 在此写下你的专属最终注记、思考或避坑指南 (可选)..." 
+                    class="w-full border border-gray-300 p-4 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none shadow-sm text-gray-700"></textarea>
+            </div>
+
+            <button id="saveBtn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-4 rounded-xl shadow-lg transition duration-200">
+                📁 永久存入专属复习空间
+            </button>
+        </div>
+        </div>
+    </div>
+</div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const dropzone = document.getElementById('dropzone');
+        const previewContainer = document.getElementById('previewContainer');
+        const processBtn = document.getElementById('processBtn');
+        let currentAiResult = null;
+        let selectedFiles = []; // 存放用户选择的图片
+
+        // 监听文件选择
+        fileInput.addEventListener('change', function(event) {
+            handleFiles(event.target.files);
+        });
+
+        // 处理文件并在页面上显示预览图
+        function handleFiles(files) {
+            selectedFiles = Array.from(files);
+            
+            if (selectedFiles.length > 0) {
+                previewContainer.innerHTML = ''; // 清空之前的预览
+                previewContainer.classList.remove('hidden');
+                processBtn.classList.remove('hidden'); // 显示解析按钮
+
+                selectedFiles.forEach((file, index) => {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        // 创建一个漂亮的图片卡片
+                        const imgCard = `
+                            <div class="relative rounded-lg overflow-hidden border border-gray-200 shadow-sm aspect-w-3 aspect-h-4">
+                                <img src="${e.target.result}" class="object-cover w-full h-full" alt="preview">
+                                <div class="absolute top-0 left-0 bg-blue-500 text-white text-xs px-2 py-1 rounded-br-lg">页 ${index + 1}</div>
+                            </div>
+                        `;
+                        previewContainer.innerHTML += imgCard;
+                    };
+                    reader.readAsDataURL(file);
+                });
+            }
+        }
+        // 监听“开始解析”按钮的点击事件
+        processBtn.addEventListener('click', async function() {
+            if (selectedFiles.length === 0) return;
+
+            // 1. 改变按钮状态，给用户“正在拼命加载”的反馈
+            const originalText = processBtn.innerText;
+            processBtn.innerText = "⏳ 正在召唤大模型视觉引擎... 请耐心稍候";
+            processBtn.disabled = true;
+            processBtn.classList.replace('bg-blue-600', 'bg-gray-400');
+            document.getElementById('resultContainer').classList.add('hidden');
+
+            // 2. 把图片打包进 FormData (这是浏览器用来传文件的标准格式)
+            const formData = new FormData();
+            selectedFiles.forEach(file => {
+                formData.append('files', file); // 这里的 'files' 必须和 FastAPI 里写的参数名一致
+            });
+
+            try {
+                // 3. 发送给后端的 FastAPI！
+                const response = await fetch('http://127.0.0.1:8000/api/parse_images', {
+                    method: 'POST',
+                    body: formData // 注意：传 FormData 时，千万不要自己加 Content-Type header，浏览器会自动处理
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.status === 'success') {
+                    currentAiResult = result.data;
+                    // 4. 解析成功！把后端传来的 JSON 数据塞到刚刚挖好的坑里
+                    document.getElementById('resultContainer').classList.remove('hidden');
+                    document.getElementById('resTags').innerText = result.data.tags;
+                    document.getElementById('resAnalysis').innerText = result.data.analysis;
+                    document.getElementById('resExercise').innerText = result.data.exercise;
+                    // 🌟 魔法时刻：呼叫 MathJax 重新渲染这片区域里的公式！
+                    if (window.MathJax) {
+                        MathJax.typesetPromise([document.getElementById('resultContainer')]).then(() => {
+                            console.log('数学公式渲染完成！');
+                        });
+                    }
+                } else {
+                    alert("❌ 解析失败：" + (result.detail || "未知错误"));
+                }
+            } catch (error) {
+                alert("❌ 网络错误，请检查 FastAPI 后端是否正常运行！");
+                console.error(error);
+            } finally {
+                // 5. 无论成功失败，恢复按钮的原始状态
+                processBtn.innerText = originalText;
+                processBtn.disabled = false;
+                processBtn.classList.replace('bg-gray-400', 'bg-blue-600');
+            }
+        });
+        // 监听“保存到数据库”按钮
+        document.getElementById('saveBtn').addEventListener('click', async function() {
+            const mainCat = document.getElementById('mainCat').value.trim();
+            const subCat = document.getElementById('subCat').value.trim();
+            const detailCat = document.getElementById('detailCat').value.trim(); // 👈 获取三级目录
+            const userAnnotation = document.getElementById('userAnnotation').value; // 👈 获取批注
+            
+            if (!mainCat || !subCat) {
+                alert("⚠️ 一级目录和二级目录不能为空哦！");
+                return;
+            }
+
+            // 🌟 完美复刻你原来的逻辑：把二级和三级目录拼接起来
+            let finalSubCat = subCat;
+            if (detailCat) {
+                finalSubCat = subCat + " / " + detailCat;
+            }
+
+            const originalText = this.innerText;
+            this.innerText = "⏳ 正在写入云端数据库...";
+            this.disabled = true;
+
+            const formData = new FormData();
+            formData.append('username', 'huilong'); 
+            formData.append('main_cat', mainCat);
+            formData.append('sub_cat', finalSubCat); // 👈 传拼接后的目录
+            formData.append('record_type', document.getElementById('recordType').value);
+            formData.append('custom_tags', document.getElementById('customTags').value);
+            formData.append('user_annotation', userAnnotation); // 👈 把批注传给后端
+            formData.append('ai_data_json', JSON.stringify(currentAiResult));
+            
+            selectedFiles.forEach(file => {
+                formData.append('files', file); 
+            });
+
+            // ... 后面的 fetch 调用代码保持不变 ...
+
+            try {
+                const response = await fetch('http://127.0.0.1:8000/api/save_note', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+
+                if (response.ok) {
+                    alert("✅ " + result.message);
+                    // 保存成功后刷新页面，清空工作台
+                    window.location.reload(); 
+                } else {
+                    alert("❌ 保存失败：" + result.detail);
+                }
+            } catch (error) {
+                alert("❌ 网络错误，保存失败！");
+            } finally {
+                this.innerText = originalText;
+                this.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

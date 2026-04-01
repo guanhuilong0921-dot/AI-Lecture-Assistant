@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高瓴 AI 学习 OS - 登录</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 flex items-center justify-center min-h-screen">
+
+    <div class="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md border border-gray-100">
+        <h2 class="text-2xl font-bold text-center text-gray-800 mb-8">🔐 高瓴 AI 学习 OS</h2>
+        
+        <form id="loginForm" class="space-y-6">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">👤 用户名</label>
+                <input type="text" id="username" required 
+                    class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">🔑 密码</label>
+                <input type="password" id="password" required 
+                    class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+            </div>
+            
+            <button type="submit" 
+                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200">
+                登录进入系统
+            </button>
+        </form>
+
+        <div id="messageBox" class="mt-4 text-center text-sm font-medium hidden"></div>
+    </div>
+
+    <script>
+        // 监听表单的提交动作
+        document.getElementById('loginForm').addEventListener('submit', async function(event) {
+            event.preventDefault(); // 阻止浏览器默认的刷新页面行为
+            
+            // 获取输入框里的账号密码
+            const user = document.getElementById('username').value;
+            const pwd = document.getElementById('password').value;
+            const messageBox = document.getElementById('messageBox');
+
+            try {
+                // 使用 fetch API 向我们刚才跑通的 FastAPI 发送 POST 请求
+                const response = await fetch('http://127.0.0.1:8000/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    // 把数据打包成 JSON 发送
+                    body: JSON.stringify({ username: user, password: pwd }) 
+                });
+
+                const result = await response.json();
+
+                // 显示后端返回的结果
+                messageBox.classList.remove('hidden'); // 显示提示框
+                if (response.ok) {
+                    messageBox.className = "mt-4 text-center text-sm font-bold text-green-600";
+                    messageBox.innerText = "✅ " + result.message + " 准备跳转...";
+                    
+                    // 登录成功后，延迟 1 秒跳转到工作台页面（我们下一步来写）
+                     setTimeout(() => { window.location.href = 'workspace.html'; }, 1000);
+                } else {
+                    messageBox.className = "mt-4 text-center text-sm font-bold text-red-600";
+                    messageBox.innerText = "❌ " + result.detail;
+                }
+            } catch (error) {
+                messageBox.classList.remove('hidden');
+                messageBox.className = "mt-4 text-center text-sm font-bold text-red-600";
+                messageBox.innerText = "❌ 网络错误，请检查 FastAPI 后端是否运行！";
+            }
+        });
+    </script>
+</body>
+</html>
